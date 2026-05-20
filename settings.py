@@ -2,6 +2,10 @@ import uuid
 import platform
 import socket
 import os
+from dotenv import load_dotenv
+
+# 加载 .env 文件
+load_dotenv()
 
 # 后端服务运行地址
 BASE_URL = os.getenv('BASE_URL', 'http://127.0.0.1:8001')
