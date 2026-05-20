@@ -1,0 +1,10 @@
+greenlet
+pika
+playwright
+pyee
+PyMySQL
+typing_extensions
+cos-python-sdk-v5
+requests
+Pillow
+redis

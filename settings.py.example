@@ -1,0 +1,36 @@
+# 后端服务运行地址
+BASE_URL = 'http://127.0.0.1:8001'
+
+# 消息队列配置
+MQ_CONFIG = {
+    "host": "127.0.0.1",
+    "port": 5672,
+    'DEFAULT_USERNAME': 'guest',
+    'DEFAULT_PASSWORD': 'guest',
+    "queue": "fastapi"
+}
+
+# 数据库配置
+DATABASE = {
+    'host': '127.0.0.1',
+    'port': 3306,
+    'user': 'root',
+    'password': 'your_password_here',
+    'database': 'fastapi'
+}
+
+# redis配置
+REDIS_CONFIG = {
+    'host': '127.0.0.1',
+    'port': 6379,
+    'db': 1,
+    'password': ''
+}
+
+# 腾讯云COS配置
+COS_CONFIG = {
+    'region': 'ap-guangzhou',
+    'secret_id': 'your_secret_id_here',
+    'secret_key': 'your_secret_key_here',
+    'bucket': 'your_bucket_here',
+}
