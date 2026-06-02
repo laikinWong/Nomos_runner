@@ -77,3 +77,21 @@ BANDWIDTH = 1
 
 # 是否开始推流
 START_STREAM = False
+
+# 性能优化配置
+# 心跳上报间隔（秒）
+HEARTBEAT_INTERVAL = 30
+
+# 截屏配置
+SCREENSHOT_IDLE_INTERVAL = 50  # 空闲时截屏间隔（单位：0.1秒）
+SCREENSHOT_ACTIVE_INTERVAL = 10  # 执行任务时截屏间隔（单位：0.1秒）
+SCREENSHOT_CACHE_TTL = 300  # 截屏缓存过期时间（秒）
+
+# 数据库连接配置
+DB_POOL_SIZE = 5  # 数据库连接池大小
+DB_CONNECT_TIMEOUT = 10  # 数据库连接超时时间（秒）
+
+# Redis连接配置
+REDIS_MAX_CONNECTIONS = 10  # Redis最大连接数
+REDIS_SOCKET_TIMEOUT = 5  # Redis socket超时时间（秒）
+REDIS_CONNECT_TIMEOUT = 5  # Redis连接超时时间（秒）

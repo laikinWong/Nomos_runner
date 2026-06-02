@@ -2,12 +2,11 @@ import re
 import time
 from playwright.sync_api import sync_playwright, expect
 
-pw = sync_playwright().start()
-
 
 class BaseBrowser:
 
-    def __init__(self, config, logger, browser=None, context=None, page=None):
+    def __init__(self, pw_instance, config, logger, browser=None, context=None, page=None):
+        self.pw = pw_instance
         self.config = config
         self.log = logger
         self.pages = {}
@@ -30,7 +29,7 @@ class BaseBrowser:
         """打开浏览器"""
         try:
             browser_type = browser_type or self.config.get("browser_type")
-            self.browser, self.context, self.page = self.create_browser(browser_type,
+            self.browser, self.context, self.page = self.create_browser(self.pw, browser_type,
                                                                         headless=self.config.get("is_debug"))
         except Exception as e:
             self.log.info("浏览器启动失败！")
@@ -39,10 +38,11 @@ class BaseBrowser:
             self.log.info("浏览器启动成功！")
 
     @staticmethod
-    def create_browser(browser_type, headless):
+    def create_browser(pw_instance, browser_type, headless):
         """创建浏览器"""
-        browser_type = getattr(pw, browser_type)
-        browser = browser_type.launch(headless=headless, args=['--start-maximized'])
+        browser_type_obj = getattr(pw_instance, browser_type)
+        launch_args = ['--start-maximized'] if not headless else []
+        browser = browser_type_obj.launch(headless=headless, args=launch_args)
         context = browser.new_context(no_viewport=True)
         page = context.new_page()
         return browser, context, page
@@ -127,19 +127,19 @@ class PageMixin(BaseBrowser):
     """封装页面对象的常用操作"""
     case_image_path = './files'
 
-    def open_url(self, url, wait_until='load', timeout=3000):
+    def open_url(self, url, wait_until='networkidle', timeout=30000):
         """
         打开url
         :param url: 网页地址
-        :param wait_until: 等待的状态
-        :param timeout:  超时时间
+        :param wait_until: 等待的状态，可选值: 'load', 'domcontentloaded', 'networkidle', 'commit'
+        :param timeout:  超时时间（毫秒）
         :return:
         """
         # 判断url是否为完整的地址，如果不是完整的地址，则需要根据测试环境的host拼接成完整的地址
         if all([not url.startswith("http"), not url.startswith("https")]):
             url = self.config.get("host") + url
         self.log.info(f"正在打开页面：{url}", )
-        self.page.goto(url, wait_until=wait_until)
+        self.page.goto(url, wait_until=wait_until, timeout=timeout)
         self.log.info(f"成功打开页面：{url}", )
 
     def refresh(self):
@@ -689,31 +689,43 @@ class BaseCase(PageMixin, LocatorMixin, MouseMixin, WaitMixin, IFrameMixin, Asse
         if hasattr(self, method):
             params = step.get("params", {})
             params = self.replace_params(params)
+            # 移除前端临时字段 element_id
+            params.pop("element_id", None)
             getattr(self, method)(**params)
         else:
             raise AttributeError(f"{step['desc']}执行的，{method}方法不存在！")
 
-    def replace_params(self, value: dict) -> dict:
+    def replace_params(self, value):
         """
-        替换参数中的变量
+        递归替换参数中的变量，移除不安全的 eval
         :param value: 要进行替换的参数
-        :return:
+        :return: 替换后的参数
         """
-        # 匹配变量的正则表达式
-        pattern = re.compile(r'\${{(.+?)}}')
-        data = str(value)
-        while pattern.search(data):
-            # 获取要替换的内容
-            old_value = pattern.search(data).group()
-            # 提取变量成名
-            key = pattern.search(data).group(1)
-            self.log.info(f"检测到参数中有变量需要替换，变量为：{old_value}")
-            # 获取变量的值
-            new_value = self.config.get('global_variable', {}).get(key)
-            if new_value:
-                # 替换变量
-                data = data.replace(old_value, new_value)
-                self.log.info(f"成功将变量：{old_value}，替换成：{new_value}")
-            else:
-                self.log.info(f"测试环境的全局变量中没有{key}，变量替换失败！")
-        return eval(data)
+        if isinstance(value, str):
+            pattern = re.compile(r'\${{(.+?)}}')
+            # 循环替换字符串中所有的变量
+            while pattern.search(value):
+                old_value = pattern.search(value).group()
+                key = pattern.search(value).group(1)
+                self.log.info(f"检测到参数中有变量需要替换，变量为：{old_value}")
+                
+                new_value = self.config.get('global_variable', {}).get(key)
+                if new_value is not None:
+                    # 如果整个字符串就是一个变量，直接返回其真实类型值（如 dict, int 等）
+                    if value == old_value:
+                        self.log.info(f"成功将变量：{old_value}，替换成：{new_value}")
+                        return new_value
+                    
+                    # 否则进行字符串替换
+                    value = value.replace(old_value, str(new_value))
+                    self.log.info(f"成功将变量：{old_value}，替换成：{new_value}")
+                else:
+                    self.log.info(f"测试环境的全局变量中没有{key}，变量替换失败！")
+                    break  # 防止死循环
+            return value
+        elif isinstance(value, dict):
+            return {k: self.replace_params(v) for k, v in value.items()}
+        elif isinstance(value, list):
+            return [self.replace_params(v) for v in value]
+        else:
+            return value

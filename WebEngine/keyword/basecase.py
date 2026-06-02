@@ -3,8 +3,6 @@ import time
 from playwright.sync_api import sync_playwright, expect
 import inspect
 
-pw = sync_playwright().start()
-
 
 class KeyWordManage:
     # 关键字的映射关系
@@ -36,7 +34,8 @@ class KeyWordManage:
 
 class BaseBrowser:
 
-    def __init__(self, config, logger, browser=None, context=None, page=None):
+    def __init__(self, pw_instance, config, logger, browser=None, context=None, page=None):
+        self.pw = pw_instance
         self.config = config
         self.log = logger
         self.pages = {}
@@ -60,7 +59,7 @@ class BaseBrowser:
         """打开浏览器"""
         try:
             browser_type = browser_type or self.config.get("browser_type")
-            self.browser, self.context, self.page = self.create_browser(browser_type,
+            self.browser, self.context, self.page = self.create_browser(self.pw, browser_type,
                                                                         headless=self.config.get("is_debug"))
         except Exception as e:
             self.log.info("浏览器启动失败！")
@@ -69,10 +68,11 @@ class BaseBrowser:
             self.log.info("浏览器启动成功！")
 
     @staticmethod
-    def create_browser(browser_type, headless):
+    def create_browser(pw_instance, browser_type, headless):
         """创建浏览器"""
-        browser_type = getattr(pw, browser_type)
-        browser = browser_type.launch(headless=headless, args=['--start-maximized'])
+        browser_type_obj = getattr(pw_instance, browser_type)
+        launch_args = ['--start-maximized'] if not headless else []
+        browser = browser_type_obj.launch(headless=headless, args=launch_args)
         context = browser.new_context(no_viewport=True)
         page = context.new_page()
         return browser, context, page
@@ -168,19 +168,19 @@ class PageMixin(BaseBrowser):
     case_image_path = './files'
 
     @KeyWordManage.register("访问页面url")
-    def open_url(self, url, wait_until='load', timeout=3000):
+    def open_url(self, url, wait_until='networkidle', timeout=30000):
         """
         打开url
         :param url: 网页地址
-        :param wait_until: 等待的状态
-        :param timeout:  超时时间
+        :param wait_until: 等待的状态，可选值: 'load', 'domcontentloaded', 'networkidle', 'commit'
+        :param timeout:  超时时间（毫秒）
         :return:
         """
         # 判断url是否为完整的地址，如果不是完整的地址，则需要根据测试环境的host拼接成完整的地址
         if all([not url.startswith("http"), not url.startswith("https")]):
             url = self.config.get("host") + url
         self.log.info(f"正在打开页面：{url}")
-        self.page.goto(url, wait_until=wait_until)
+        self.page.goto(url, wait_until=wait_until, timeout=timeout)
         self.log.info(f"成功打开页面：{url}")
 
     @KeyWordManage.register("刷新网页")
@@ -259,12 +259,18 @@ class LocatorMixin(BaseBrowser):
         :return:
         """
         self.log.info(f"正在点击元素：{locator}")
-        loc = self.page.locator(locator)
-        # 如果点击次数为1，并且是左键，则使用evaluate方法执行点击操作
-        if count == 1 and button == 'left':
-            loc.evaluate('el => el.click()')
-        else:
-            loc.click(button=button, click_count=count, timeout=timeout)
+        try:
+            loc = self.page.locator(locator)
+            # 等待元素出现
+            loc.wait_for(state="visible", timeout=timeout)
+            # 如果点击次数为1，并且是左键，则使用evaluate方法执行点击操作
+            if count == 1 and button == 'left':
+                loc.evaluate('el => el.click()')
+            else:
+                loc.click(button=button, click_count=count, timeout=timeout)
+        except Exception as e:
+            self.log.error(f"点击元素失败: {e}")
+            raise e
 
     @KeyWordManage.register("清空输入框内容")
     def clear_value(self, locator, timeout=3000):
@@ -663,7 +669,7 @@ class AssertMixin(BaseBrowser):
 
         else:
             expect(self.page.locator(locator).first).to_be_visible()
-            self.log.info(f"断言元素可见，预期结果!=实际结果")
+            self.log.info(f"断言元素可见，预期结果=实际结果")
 
     @KeyWordManage.register("断言元素隐藏")
     def except_to_be_hidden(self, locator, index=1):
@@ -679,7 +685,7 @@ class AssertMixin(BaseBrowser):
             self.log.info(f"断言元素不可见，预期结果=实际结果")
         else:
             expect(self.page.locator(locator).first).to_be_hidden()
-            self.log.info(f"断言元素不可见，预期结果!=实际结果")
+            self.log.info(f"断言元素不可见，预期结果=实际结果")
 
     @KeyWordManage.register("断言元素可用")
     def except_to_be_enabled(self, locator, index=1):
@@ -695,7 +701,7 @@ class AssertMixin(BaseBrowser):
             self.log.info(f"断言元素是否可用，预期结果=实际结果")
         else:
             expect(self.page.locator(locator).first).to_be_enabled()
-            self.log.info(f"断言元素是否可用，预期结果!=实际结果")
+            self.log.info(f"断言元素是否可用，预期结果=实际结果")
 
     @KeyWordManage.register("断言元素被禁用")
     def except_to_be_disabled(self, locator, index=1):
@@ -711,7 +717,7 @@ class AssertMixin(BaseBrowser):
             self.log.info(f"断言元素是否不可用，预期结果=实际结果")
         else:
             expect(self.page.locator(locator).first).to_be_disabled()
-            self.log.info(f"断言元素是否不可用，预期结果!=实际结果")
+            self.log.info(f"断言元素是否不可用，预期结果=实际结果")
 
     @KeyWordManage.register("断言元素被选中")
     def except_to_be_checked(self, locator, index=1):
@@ -728,7 +734,7 @@ class AssertMixin(BaseBrowser):
         else:
 
             expect(self.page.locator(locator).first).to_be_checked()
-            self.log.info(f"断言元素是否被选中，预期结果!=实际结果")
+            self.log.info(f"断言元素是否被选中，预期结果=实际结果")
 
     @KeyWordManage.register("断言元素是否为空")
     def except_to_be_empty(self, locator, index=1):
@@ -744,7 +750,7 @@ class AssertMixin(BaseBrowser):
             self.log.info(f"断言元素是否为空，预期结果=实际结果")
         else:
             expect(self.page.locator(locator).first).to_be_empty()
-            self.log.info(f"断言元素是否为空，预期结果!=实际结果")
+            self.log.info(f"断言元素是否为空，预期结果=实际结果")
 
     @KeyWordManage.register("断言元素可编辑")
     def except_to_be_editable(self, locator, index=1):
@@ -796,6 +802,8 @@ class BaseCase(PageMixin, LocatorMixin, MouseMixin, WaitMixin, IFrameMixin, Asse
             # 获取关键字执行的参数
             params = step.get("params", {})
             params = self.replace_params(params)
+            # 移除前端临时字段 element_id
+            params.pop("element_id", None)
             # 执行关键字
             method(self, **params)
         elif hasattr(self, method_name):
@@ -803,31 +811,43 @@ class BaseCase(PageMixin, LocatorMixin, MouseMixin, WaitMixin, IFrameMixin, Asse
             # 获取关键字执行的参数
             params = step.get("params", {})
             params = self.replace_params(params)
-            method(self, **params)
+            # 移除前端临时字段 element_id
+            params.pop("element_id", None)
+            method(**params)
         else:
             raise AttributeError(f"{step['desc']}执行的{keyword}关键字不存在！")
 
-    def replace_params(self, value: dict) -> dict:
+    def replace_params(self, value):
         """
-        替换参数中的变量
+        递归替换参数中的变量，移除不安全的 eval
         :param value: 要进行替换的参数
-        :return:
+        :return: 替换后的参数
         """
-        # 匹配变量的正则表达式
-        pattern = re.compile(r'\${{(.+?)}}')
-        data = str(value)
-        while pattern.search(data):
-            # 获取要替换的内容
-            old_value = pattern.search(data).group()
-            # 提取变量成名
-            key = pattern.search(data).group(1)
-            self.log.info(f"检测到参数中有变量需要替换，变量为：{old_value}")
-            # 获取变量的值
-            new_value = self.config.get('global_variable', {}).get(key)
-            if new_value:
-                # 替换变量
-                data = data.replace(old_value, new_value)
-                self.log.info(f"成功将变量：{old_value}，替换成：{new_value}")
-            else:
-                self.log.info(f"测试环境的全局变量中没有：{key}，变量替换失败！")
-        return eval(data)
+        if isinstance(value, str):
+            pattern = re.compile(r'\${{(.+?)}}')
+            # 循环替换字符串中所有的变量
+            while pattern.search(value):
+                old_value = pattern.search(value).group()
+                key = pattern.search(value).group(1)
+                self.log.info(f"检测到参数中有变量需要替换，变量为：{old_value}")
+                
+                new_value = self.config.get('global_variable', {}).get(key)
+                if new_value is not None:
+                    # 如果整个字符串就是一个变量，直接返回其真实类型值（如 dict, int 等）
+                    if value == old_value:
+                        self.log.info(f"成功将变量：{old_value}，替换成：{new_value}")
+                        return new_value
+                    
+                    # 否则进行字符串替换
+                    value = value.replace(old_value, str(new_value))
+                    self.log.info(f"成功将变量：{old_value}，替换成：{new_value}")
+                else:
+                    self.log.info(f"测试环境的全局变量中没有{key}，变量替换失败！")
+                    break  # 防止死循环
+            return value
+        elif isinstance(value, dict):
+            return {k: self.replace_params(v) for k, v in value.items()}
+        elif isinstance(value, list):
+            return [self.replace_params(v) for v in value]
+        else:
+            return value
