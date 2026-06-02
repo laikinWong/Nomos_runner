@@ -28,7 +28,9 @@ class RedisPublisher:
             decode_responses=True,
             max_connections=settings.REDIS_MAX_CONNECTIONS,
             socket_timeout=settings.REDIS_SOCKET_TIMEOUT,
-            socket_connect_timeout=settings.REDIS_CONNECT_TIMEOUT
+            socket_connect_timeout=settings.REDIS_CONNECT_TIMEOUT,
+            retry_on_timeout=True,
+            health_check_interval=30
         )
         self.redis_cli = redis.StrictRedis(connection_pool=self.pool)
         # 停止事件，用于控制屏幕截图线程
