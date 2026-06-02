@@ -1,4 +1,10 @@
+import asyncio
+import sys
 import time
+
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 from playwright.sync_api import sync_playwright
 from tools.cos_upload import upload_cos as upload_oss
 from WebEngine.keyword.basecase import BaseCase
