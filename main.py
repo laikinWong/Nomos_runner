@@ -1,6 +1,11 @@
+import asyncio
 import signal
 import sys
 import time
+
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 from tools.mq_consumer import MQConsumer
 from tools.redis_publisher import redis_pub
 import settings
