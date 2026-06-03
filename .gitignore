@@ -17,3 +17,8 @@ env/
 
 # 敏感配置（保留示例文件）
 settings.local.py
+
+# Logs
+*.log
+1.txt
+log.txt
